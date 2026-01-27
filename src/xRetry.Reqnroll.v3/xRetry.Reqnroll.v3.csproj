@@ -6,6 +6,7 @@
 
     <IsPackable>true</IsPackable>
     <NuspecProperties>version=$(Version);xRetryVersion=$(xRetryVersion)</NuspecProperties>
+    <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
   <ItemGroup>

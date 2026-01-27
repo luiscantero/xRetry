@@ -11,11 +11,10 @@ using xRetry.v3;
 namespace xRetry.Reqnroll.v3
 {
     /// <summary>
-    /// A decorator for IUnitTestGeneratorProvider that adds retry functionality to xUnit v3 tests.
-    /// This wraps the actual generator provider (XUnit3TestGeneratorProvider from Reqnroll.xunit.v3)
-    /// and modifies test attributes to use RetryFact/RetryTheory when @retry tags are present.
+    /// A test generator provider that extends XUnit3TestGeneratorProvider to add retry functionality.
+    /// This modifies test attributes to use RetryFact/RetryTheory when @retry tags are present.
     /// </summary>
-    public class TestGeneratorProvider : IUnitTestGeneratorProvider
+    public class TestGeneratorProvider : XUnit3TestGeneratorProvider
     {
         private const string IGNORE_TAG = "ignore";
 
@@ -27,94 +26,47 @@ namespace xRetry.Reqnroll.v3
         private const string RETRY_FACT_ATTRIBUTE = "xRetry.v3.RetryFact";
         private const string RETRY_THEORY_ATTRIBUTE = "xRetry.v3.RetryTheory";
 
-        private readonly IUnitTestGeneratorProvider innerProvider;
         private readonly IRetryTagParser retryTagParser;
         private readonly CodeDomHelper codeDomHelper;
 
-        public TestGeneratorProvider(CodeDomHelper codeDomHelper, IRetryTagParser retryTagParser, IUnitTestGeneratorProvider innerProvider)
+        public TestGeneratorProvider(CodeDomHelper codeDomHelper, IRetryTagParser retryTagParser) : base(codeDomHelper)
         {
             this.codeDomHelper = codeDomHelper;
             this.retryTagParser = retryTagParser;
-            this.innerProvider = innerProvider;
         }
 
-        // Delegate all interface methods to inner provider, but intercept the ones that set test attributes
-
-        public UnitTestGeneratorTraits GetTraits() => innerProvider.GetTraits();
-
-        public void SetTestClass(TestClassGenerationContext generationContext, string featureTitle, string featureDescription)
-            => innerProvider.SetTestClass(generationContext, featureTitle, featureDescription);
-
-        public void SetTestClassCategories(TestClassGenerationContext generationContext, IEnumerable<string> featureCategories)
-            => innerProvider.SetTestClassCategories(generationContext, featureCategories);
-
-        public void SetTestClassIgnore(TestClassGenerationContext generationContext)
-            => innerProvider.SetTestClassIgnore(generationContext);
-
-        public void FinalizeTestClass(TestClassGenerationContext generationContext)
-            => innerProvider.FinalizeTestClass(generationContext);
-
-        public void SetTestClassNonParallelizable(TestClassGenerationContext generationContext)
-            => innerProvider.SetTestClassNonParallelizable(generationContext);
-
-        public void SetTestMethodNonParallelizable(TestClassGenerationContext generationContext, CodeMemberMethod testMethod)
-            => innerProvider.SetTestMethodNonParallelizable(generationContext, testMethod);
-
-        public void SetTestClassInitializeMethod(TestClassGenerationContext generationContext)
-            => innerProvider.SetTestClassInitializeMethod(generationContext);
-
-        public void SetTestClassCleanupMethod(TestClassGenerationContext generationContext)
-            => innerProvider.SetTestClassCleanupMethod(generationContext);
-
-        public void SetTestInitializeMethod(TestClassGenerationContext generationContext)
-            => innerProvider.SetTestInitializeMethod(generationContext);
-
-        public void SetTestCleanupMethod(TestClassGenerationContext generationContext)
-            => innerProvider.SetTestCleanupMethod(generationContext);
-
-        public void SetTestMethodIgnore(TestClassGenerationContext generationContext, CodeMemberMethod testMethod)
-            => innerProvider.SetTestMethodIgnore(generationContext, testMethod);
-
         // Called for scenario outlines
-        public void SetRowTest(TestClassGenerationContext generationContext, CodeMemberMethod testMethod, string scenarioTitle)
+        public override void SetRowTest(TestClassGenerationContext generationContext, CodeMemberMethod testMethod, string scenarioTitle)
         {
-            innerProvider.SetRowTest(generationContext, testMethod, scenarioTitle);
+            base.SetRowTest(generationContext, testMethod, scenarioTitle);
 
             string[] featureTags = generationContext.Feature.Tags.Select(t => stripLeadingAtSign(t.Name)).ToArray();
             applyRetry(featureTags, Enumerable.Empty<string>(), testMethod);
         }
 
-        public void SetRow(TestClassGenerationContext generationContext, CodeMemberMethod testMethod, IEnumerable<string> arguments, IEnumerable<string> tags, bool isIgnored)
-            => innerProvider.SetRow(generationContext, testMethod, arguments, tags, isIgnored);
-
-        public void SetTestMethodAsRow(TestClassGenerationContext generationContext, CodeMemberMethod testMethod, string scenarioTitle, string exampleSetName, string variantName, IEnumerable<KeyValuePair<string, string>> arguments)
-            => innerProvider.SetTestMethodAsRow(generationContext, testMethod, scenarioTitle, exampleSetName, variantName, arguments);
-
         // Called for scenarios
-        public void SetTestMethod(TestClassGenerationContext generationContext, CodeMemberMethod testMethod, string friendlyTestName)
+        public override void SetTestMethod(TestClassGenerationContext generationContext, CodeMemberMethod testMethod, string friendlyTestName)
         {
-            innerProvider.SetTestMethod(generationContext, testMethod, friendlyTestName);
+            base.SetTestMethod(generationContext, testMethod, friendlyTestName);
 
             string[] featureTags = generationContext.Feature.Tags.Select(t => stripLeadingAtSign(t.Name)).ToArray();
             applyRetry(featureTags, Enumerable.Empty<string>(), testMethod);
         }
 
         // Called for both scenarios & scenario outlines, but only if it has tags
-        public void SetTestMethodCategories(TestClassGenerationContext generationContext,
+        public override void SetTestMethodCategories(TestClassGenerationContext generationContext,
             CodeMemberMethod testMethod, IEnumerable<string> scenarioCategories)
         {
             // Optimisation: Prevent multiple enumerations
             scenarioCategories = scenarioCategories as string[] ?? scenarioCategories.ToArray();
 
-            innerProvider.SetTestMethodCategories(generationContext, testMethod, scenarioCategories);
+            base.SetTestMethodCategories(generationContext, testMethod, scenarioCategories);
 
             // Feature tags will have already been processed in one of the methods above, which are executed before this
             IEnumerable<string> featureTags = generationContext.Feature.Tags.Select(t => stripLeadingAtSign(t.Name));
             applyRetry((string[]) scenarioCategories, featureTags, testMethod);
         }
 
-        public void MarkCodeMethodInvokeExpressionAsAwait(CodeMethodInvokeExpression expression)
-            => innerProvider.MarkCodeMethodInvokeExpressionAsAwait(expression);
 
         /// <summary>
         /// Apply retry tags to the current test
